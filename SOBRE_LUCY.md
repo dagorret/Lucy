@@ -1015,15 +1015,11 @@ pytz==2024.1
 
 **Recursos Web:**
 
-1. **EDUCAUSE - Learning Management Systems**
-   - URL: https://library.educause.edu/topics/teaching-and-learning/learning-management-system-lms
-   - Descripción: Centro de recursos sobre LMS en educación superior
-
-2. **UNESCO - ICT in Education**
+1. **UNESCO - ICT in Education**
    - URL: https://www.unesco.org/en/digital-education
    - Descripción: Políticas y buenas prácticas en tecnología educativa
 
-3. **eLearning Industry - Academic Management Systems**
+2. **eLearning Industry - Academic Management Systems**
    - URL: https://elearningindustry.com/directory/software-categories/learning-management-systems
    - Descripción: Comparativas y análisis de sistemas de gestión académica
 
