@@ -1,0 +1,375 @@
+/* Estilos personalizados del panel de administración Lucy AMS */
+:root {
+  --lucy-blue: #1d4ed8;
+  --lucy-red: #ef4444;
+  --lucy-bg: #0f172a;
+}
+
+body.login {
+  background: radial-gradient(circle at 20% 20%, rgba(29, 78, 216, 0.2), transparent 35%),
+              radial-gradient(circle at 80% 0%, rgba(239, 68, 68, 0.2), transparent 40%),
+              var(--lucy-bg);
+  color: #e2e8f0;
+}
+
+#header {
+  background: linear-gradient(90deg, var(--lucy-blue), var(--lucy-red));
+  border-bottom: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+#branding {
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+  box-sizing: border-box !important;
+}
+
+#user-tools {
+  padding-right: 24px !important;
+}
+
+#branding h1, #branding h1 a:link, #branding h1 a:visited {
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+#user-tools a, #user-tools {
+  color: #e2e8f0;
+}
+
+.module caption {
+  background: linear-gradient(90deg, #0b1222, #1d4ed8 40%, #0b1222);
+  color: #e2e8f0;
+  font-weight: 700;
+}
+
+div.breadcrumbs {
+  background: #0b1222 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #94a3b8 !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  /* Padding con espacio extra para que "Inicio" no quede pegado al borde */
+  padding: 10px max(24px, calc((100% - 1600px) / 2 + 24px)) !important;
+}
+
+a:link, a:visited {
+  color: var(--lucy-blue);
+}
+
+.button, input[type=submit], input[type=button], .submit-row input {
+  background: linear-gradient(90deg, var(--lucy-blue), var(--lucy-red));
+  border: none;
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+}
+
+.button:hover, input[type=submit]:hover, input[type=button]:hover, .submit-row input:hover {
+  filter: brightness(1.05);
+}
+
+/* Titulos de módulos en el dashboard (lado izquierdo) */
+#content-main .module h2 {
+  background: linear-gradient(90deg, #0b1222, #1d4ed8 40%, #0b1222);
+  color: #e2e8f0;
+  padding: 8px 12px;
+}
+
+/* Barras de mensajes (éxito/info) con azul */
+ul.messagelist li {
+  border: none;
+  color: #0b1222;
+}
+ul.messagelist li.success {
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0.2), rgba(29, 78, 216, 0.25));
+}
+ul.messagelist li.info {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+/* Fieldsets personalizados (ej: Herramientas UTI) */
+fieldset.module h2,
+.module h2,
+.aligned h2,
+fieldset h2 {
+  background: linear-gradient(90deg, #0b1222, #1d4ed8 40%, #0b1222) !important;
+  color: #e2e8f0 !important;
+  padding: 8px 12px;
+  font-weight: 700;
+}
+
+/* Sidebar de filtros y título del changelist */
+.filter-panel, .changelist-filter h2 {
+  background: linear-gradient(90deg, #0b1222, #1d4ed8 50%, #0b1222);
+  color: #e2e8f0;
+}
+
+/* ========== ANTI-COMPOSITING (Firefox subpíxeles) ========== */
+/* Evita que inputs hereden transform/filter y terminen borrosos */
+#toolbar,
+#changelist-filter,
+#changelist {
+  transform: none !important;
+  filter: none !important;
+  will-change: auto !important;
+}
+
+#toolbar input,
+#toolbar select,
+#changelist-filter input,
+#changelist-filter select,
+#changelist input,
+#changelist select {
+  transform: none !important;
+  filter: none !important;
+}
+
+/* ========== FULL WIDTH ADMIN CON MARGENES ========== */
+#container {
+  width: auto !important;
+  max-width: 1600px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+  box-sizing: border-box !important;
+}
+
+.main,
+#content {
+  max-width: none !important;
+  width: 100% !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Asegurar que todos los elementos internos respeten el box-sizing */
+#content *,
+.main * {
+  box-sizing: border-box;
+}
+
+/* En algunos temas el sidebar empuja: asegúrate de no limitar el ancho */
+.content {
+  max-width: none !important;
+}
+
+/* Si usas nav_sidebar, que no "aplane" el contenido */
+body.nav-sidebar #content {
+  margin-left: 0 !important;
+}
+
+/* ========== DASHBOARD LAYOUT ========== */
+.lucy-dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1100px) {
+  .lucy-dashboard-grid {
+    grid-template-columns: 1.2fr 0.8fr;
+    align-items: start;
+  }
+}
+
+/* cards */
+.lucy-card {
+  background: var(--body-bg, #fff);
+  border: 1px solid var(--hairline-color, #e6e6e6);
+  border-radius: 10px;
+  padding: 14px;
+  overflow: hidden;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.lucy-card h2 {
+  margin-top: 0;
+}
+
+/* tablas dentro de cards */
+.lucy-card table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lucy-card th,
+.lucy-card td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  text-align: left;
+}
+
+.lucy-muted {
+  color: #666;
+  font-size: 12px;
+}
+
+/* quick actions grid */
+.lucy-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.lucy-action {
+  display: block;
+  text-decoration: none;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  padding: 14px;
+  background: rgba(255,255,255,0.9);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.lucy-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+
+/* ========== PERIODIC TASKS INLINE ========== */
+/* Mejorar visualización de tareas periódicas en CrontabSchedule */
+.inline-group {
+  margin-top: 25px !important;
+  margin-bottom: 25px !important;
+}
+
+.inline-group h2 {
+  padding: 15px 12px !important;
+  margin-bottom: 15px !important;
+  margin-top: 0 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* Tabla de tareas periódicas inline */
+.inline-related {
+  margin-top: 15px !important;
+  margin-bottom: 15px !important;
+  width: 100% !important;
+  overflow-x: auto !important;
+}
+
+/* Headers de tablas inline */
+.inline-related thead th {
+  padding: 12px 10px !important;
+  background: linear-gradient(90deg, #0b1222, #1d4ed8 40%, #0b1222) !important;
+  color: #e2e8f0 !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  font-size: 13px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* Filas de tareas periódicas - evitar texto superpuesto */
+.inline-related tbody tr td,
+.tabular.inline-related tbody tr td,
+table.inline-related tbody tr td {
+  padding: 14px 12px !important;
+  line-height: 1.8 !important;
+  vertical-align: middle !important;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  font-size: 15px !important;
+  color: #000 !important;
+  font-weight: 500 !important;
+}
+
+/* Párrafos dentro de celdas de tareas periódicas */
+.inline-related tbody tr td p,
+.tabular.inline-related tbody tr td p,
+table.inline-related tbody tr td p {
+  font-size: 15px !important;
+  color: #000 !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.8 !important;
+}
+
+/* Campo de nombre de tarea - asegurar que no se superponga */
+.inline-related tbody tr td.field-name,
+.inline-related tbody tr td.field-task {
+  min-width: 200px !important;
+  max-width: 350px !important;
+}
+
+/* Links dentro de celdas - tamaño y color legibles */
+.inline-related tbody tr td a,
+.tabular.inline-related tbody tr td a,
+table.inline-related tbody tr td a {
+  display: inline-block !important;
+  word-break: break-word !important;
+  font-size: 15px !important;
+  color: #1d4ed8 !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+}
+
+.inline-related tbody tr td a:hover,
+.tabular.inline-related tbody tr td a:hover,
+table.inline-related tbody tr td a:hover {
+  color: #ef4444 !important;
+  text-decoration: underline !important;
+}
+
+/* Texto descriptivo debajo de los links */
+.inline-related tbody tr td .help,
+.inline-related tbody tr td small {
+  font-size: 12px !important;
+  color: #666 !important;
+  display: block !important;
+  margin-top: 4px !important;
+}
+
+/* Columna "original" con descripción de la tarea */
+.inline-related tbody tr td.original p {
+  font-size: 14px !important;
+  color: #333 !important;
+  font-weight: 400 !important;
+  margin: 0 0 8px 0 !important;
+  line-height: 1.6 !important;
+}
+
+.inline-related tbody tr td.original a {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+
+/* Mejor espaciado para el grupo inline completo */
+.tabular.inline-related {
+  margin-top: 20px !important;
+  padding-top: 15px !important;
+  padding-bottom: 15px !important;
+  border-spacing: 0 !important;
+}
+
+/* Título del inline group con mejor padding */
+.inline-group .tabular caption,
+.inline-group h2 {
+  margin-top: 10px !important;
+  padding: 15px 12px !important;
+}
+
+/* Espaciado entre filas */
+.inline-related tbody tr {
+  border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+}
+
+.inline-related tbody tr:last-child {
+  border-bottom: none !important;
+}

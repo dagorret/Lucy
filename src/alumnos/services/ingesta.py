@@ -1,0 +1,386 @@
+"""
+Nombre del Módulo: ingesta.py
+
+Descripción:
+Servicios de ingesta de datos desde SIAL.
+
+Autor: Carlos Dagorret
+Fecha de Creación: 2025-12-29
+Última Modificación: 2025-12-29
+
+Licencia: MIT
+Copyright (c) 2025 Carlos Dagorret
+
+Permisos:
+Se concede permiso, de forma gratuita, a cualquier persona que obtenga una copia
+de este software y la documentación asociada (el "Software"), para tratar
+en el Software sin restricciones, incluyendo, sin limitación, los derechos
+de usar, copiar, modificar, fusionar, publicar, distribuir, sublicenciar
+y/o vender copias del Software, y para permitir a las personas a las que
+se les proporciona el Software hacerlo, sujeto a las siguientes condiciones:
+
+El aviso de copyright anterior y este aviso de permiso se incluirán en todas
+las copias o partes sustanciales del Software.
+
+EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO, EXPRESA O
+IMPLÍCITA, INCLUYENDO PERO NO LIMITADO A LAS GARANTÍAS DE COMERCIABILIDAD,
+IDONEIDAD PARA UN PROPÓSITO PARTICULAR Y NO INFRACCIÓN. EN NINGÚN CASO LOS
+AUTORES O TITULARES DE LOS DERECHOS DE AUTOR SERÁN RESPONSABLES DE CUALQUIER
+RECLAMO, DAÑO U OTRA RESPONSABILIDAD, YA SEA EN UNA ACCIÓN DE CONTRATO,
+AGRAVIO O DE OTRO MODO, QUE SURJA DE, FUERA DE O EN CONEXIÓN CON EL SOFTWARE
+O EL USO U OTROS TRATOS EN EL SOFTWARE.
+"""
+import datetime
+import secrets
+import string
+from typing import Dict, List, Optional, Tuple
+
+import requests
+from django.conf import settings
+
+from cursos.services import resolver_curso
+from ..models import Alumno  # .. porque ahora estamos en alumnos/services/
+
+
+class SIALClient:
+    """Cliente HTTP simple para la API SIAL/UTI (mock o prod)."""
+
+    def __init__(self, base_url: str = None, user: str = None, password: str = None):
+        from ..utils.config import get_sial_base_url, get_sial_basic_user, get_sial_basic_pass
+        self.base_url = (base_url or get_sial_base_url()).rstrip("/")
+        self.auth = (user or get_sial_basic_user(), password or get_sial_basic_pass())
+        self.session = requests.Session()
+        self.session.auth = self.auth
+
+    def fetch_listas(
+        self,
+        tipo: str,
+        n: Optional[int] = None,
+        fecha: Optional[str] = None,
+        desde: Optional[str] = None,
+        hasta: Optional[str] = None,
+        seed: Optional[int] = None,
+    ) -> List[dict]:
+        """
+        Llama a /listas/ (completa), /listas/{fecha} o /listas/{desde}/{hasta} según parámetros.
+        """
+        path = f"/webservice/sial/V2/04/{tipo}/listas"
+        if fecha:
+            path += f"/{fecha}"
+        elif desde and hasta:
+            path += f"/{desde}/{hasta}"
+        else:
+            path += "/"
+
+        params = {}
+        if n is not None:
+            params["n"] = n
+        if seed is not None:
+            params["seed"] = seed
+
+        url = self.base_url + path
+        resp = self.session.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
+    def fetch_datospersonales(self, nrodoc: str) -> dict:
+        """
+        Llama a /alumnos/datospersonales/{nrodoc} y devuelve el primer registro.
+        """
+        path = f"/webservice/sial/V2/04/alumnos/datospersonales/{nrodoc}"
+        url = self.base_url + path
+        resp = self.session.get(url, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        return data[0] if data else {}
+
+
+def _parse_fecha_natal(fecha_natal: Optional[str]) -> Optional[datetime.date]:
+    if not fecha_natal:
+        return None
+    try:
+        return datetime.datetime.strptime(fecha_natal.strip(), "%d/%m/%y").date()
+    except Exception:
+        return None
+
+
+def _parse_fecha_inscri(fecha_inscri: Optional[str]) -> Optional[datetime.date]:
+    if not fecha_inscri:
+        return None
+    for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
+        try:
+            return datetime.datetime.strptime(fecha_inscri.strip(), fmt).date()
+        except Exception:
+            continue
+    return None
+
+
+def _build_defaults(
+    tipo_estado: str,
+    lista_item: dict,
+    personal: dict,
+    existing: Optional[Alumno],
+) -> Dict:
+    """
+    Arma los defaults para update_or_create de Alumno.
+    Implementa lógica de evolución: solo avanza estados, nunca retrocede.
+    """
+    # Jerarquía de estados (de menor a mayor)
+    JERARQUIA_ESTADOS = {
+        "preinscripto": 1,
+        "aspirante": 2,
+        "ingresante": 3,
+        "alumno": 4,
+    }
+
+    estado_map = {
+        "preinscriptos": "preinscripto",
+        "aspirantes": "aspirante",
+        "ingresantes": "ingresante",
+    }
+    estado_nuevo = estado_map.get(tipo_estado, tipo_estado)
+
+    # Determinar el estado final según evolución
+    if existing and existing.estado_actual:
+        estado_actual = existing.estado_actual
+        nivel_actual = JERARQUIA_ESTADOS.get(estado_actual, 0)
+        nivel_nuevo = JERARQUIA_ESTADOS.get(estado_nuevo, 0)
+
+        # Solo evolucionar si el nuevo estado es superior
+        if nivel_nuevo > nivel_actual:
+            estado_normalizado = estado_nuevo
+        else:
+            # Mantener el estado actual (no retroceder)
+            estado_normalizado = estado_actual
+    else:
+        # Alumno nuevo, usar el estado que viene
+        estado_normalizado = estado_nuevo
+    carreras = lista_item.get("carreras") or []
+    carrera_primaria = carreras[0] if carreras else {}
+    cohorte = carrera_primaria.get("cohorte")
+    modalidad = carrera_primaria.get("modalidad")
+    fecha_inscri = carrera_primaria.get("fecha_inscri")
+    modalidad_normalizada = (modalidad or "").strip() or None
+
+    # Auto-calcular cohorte desde fecha_ingreso si no viene
+    if not cohorte and fecha_inscri:
+        fecha_parsed = _parse_fecha_inscri(fecha_inscri)
+        if fecha_parsed:
+            cohorte = fecha_parsed.year
+
+    # 🔧 SOLO generar payloads Teams/Email/Moodle para aspirantes/ingresantes
+    # Preinscriptos NO tienen cuenta institucional, solo email personal
+    nrodoc = str(lista_item.get("nrodoc") or "").strip()
+
+    upn = None
+    email_inst = None
+    teams_password = None
+
+    # Solo para aspirantes e ingresantes crear cuentas
+    if estado_normalizado in ("aspirante", "ingresante"):
+        def _gen_password(length: int = 16) -> str:
+            alphabet = string.ascii_letters + string.digits
+            return "".join(secrets.choice(alphabet) for _ in range(length))
+
+        from alumnos.utils.config import (
+            get_account_prefix,
+            get_teams_tenant,
+            get_teams_client_id,
+            get_teams_client_secret,
+            get_email_from,
+            get_email_host,
+            get_email_port,
+        )
+
+        upn = f"{get_account_prefix()}{nrodoc}@eco.unrc.edu.ar" if nrodoc else None
+        email_inst = upn or (personal.get("email_institucional") or "").strip() or None
+        teams_password = existing.teams_password if existing and existing.teams_password else _gen_password()
+
+        # Configuración eliminada - ya no usamos payloads
+        pass
+
+    def _resolver_cursos() -> List[str]:
+        from cursos.constants import CARRERAS_DICT
+        import re
+
+        shortnames: List[str] = []
+        for carrera in carreras:
+            id_carrera = carrera.get("id_carrera")
+            comisiones = carrera.get("comisiones") or []
+            modalidad_carrera = (carrera.get("modalidad") or "").strip()
+            comision = None
+
+            # Usar el nombre completo de la comisión (ej: "COMISION 1", "COMISION 02")
+            if comisiones:
+                nombre_comision = comisiones[0].get("nombre_comision", "")
+                if nombre_comision:
+                    comision = nombre_comision  # Pasar nombre completo para match exacto
+
+            # Mapear id_carrera de UTI a código interno (ej: 3 -> CP)
+            codigo_carrera = CARRERAS_DICT.get(str(id_carrera)) or CARRERAS_DICT.get(id_carrera)
+            if not codigo_carrera:
+                continue  # Carrera no reconocida, skip
+
+            try:
+                cursos = resolver_curso(codigo_carrera, modalidad_carrera, comision)
+                # Ahora resolver_curso devuelve List[str], extender la lista con todos los cursos
+                shortnames.extend(cursos)
+            except Exception:
+                continue
+        return shortnames
+
+    from alumnos.utils.config import get_moodle_base_url, get_moodle_wstoken
+
+    moodle_courses = _resolver_cursos()
+    moodle_base_url = get_moodle_base_url()
+
+    # Construir datos de carreras para moodle_payload
+    carreras_info = []
+    for carrera in carreras:
+        import re
+        comisiones_list = carrera.get("comisiones") or []
+        comision_nombre = comisiones_list[0].get("nombre_comision", "") if comisiones_list else ""
+
+        # Extraer número de comisión
+        comision_numero = None
+        if comision_nombre:
+            match = re.search(r'COMISI[OÓ]N\s+(\d+)', comision_nombre, re.IGNORECASE)
+            if match:
+                comision_numero = match.group(1)
+
+        carreras_info.append({
+            "id_carrera": carrera.get("id_carrera"),
+            "modalidad": carrera.get("modalidad"),
+            "comision": comision_numero,
+            "comision_nombre": comision_nombre,
+            "nombre_carrera": carrera.get("nombre_carrera"),
+        })
+
+    # Moodle payload eliminado - ya no se usa
+
+    return {
+        "nombre": (personal.get("nombre") or "").strip(),
+        "apellido": (personal.get("apellido") or "").strip(),
+        "email_personal": (personal.get("email") or "").strip(),
+        "fecha_nacimiento": _parse_fecha_natal(personal.get("fecha_natal")),
+        "cohorte": cohorte if cohorte is not None else None,
+        "localidad": personal.get("localidad") or None,
+        "telefono": personal.get("telefono") or None,
+        "email_institucional": personal.get("email_institucional") or None,
+        "estado_actual": estado_normalizado,
+        "fecha_ingreso": _parse_fecha_inscri(fecha_inscri),
+        "estado_ingreso": carrera_primaria.get("estado_ingreso") or None,
+        "modalidad_actual": modalidad_normalizada,
+        "carreras_data": carreras if carreras else None,  # Guardar array completo de carreras
+        "teams_password": teams_password,
+    }
+
+
+def ingerir_desde_sial(
+    tipo: str,
+    n: Optional[int] = None,
+    fecha: Optional[str] = None,
+    desde: Optional[str] = None,
+    hasta: Optional[str] = None,
+    seed: Optional[int] = None,
+    client: Optional[SIALClient] = None,
+    retornar_nuevos: bool = False,
+    enviar_email: bool = False,
+) -> Tuple[int, int, List[str], Optional[List[int]]]:
+    """
+    Consume listas SIAL y persiste en Alumno.
+
+    Args:
+        tipo: Tipo de ingesta (preinscriptos, aspirantes, ingresantes)
+        retornar_nuevos: Si es True, retorna lista de IDs de alumnos creados
+        enviar_email: Si es True, envía email de bienvenida a alumnos nuevos
+
+    Returns:
+        (creados, actualizados, errores, [nuevos_ids] si retornar_nuevos=True)
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # LOG INICIO
+    logger.info(f"[Ingesta {tipo}] 🚀 Iniciando ingesta de {tipo}")
+    logger.info(f"[Ingesta {tipo}] Parámetros: n={n}, fecha={fecha}, desde={desde}, hasta={hasta}, enviar_email={enviar_email}")
+
+    client = client or SIALClient()
+    created = 0
+    updated = 0
+    errors: List[str] = []
+    nuevos_ids: List[int] = [] if retornar_nuevos else None
+    cache_personal: Dict[str, dict] = {}
+
+    try:
+        listas = client.fetch_listas(tipo, n=n, fecha=fecha, desde=desde, hasta=hasta, seed=seed)
+        logger.info(f"[Ingesta {tipo}] Se obtuvieron {len(listas)} registros de la API")
+    except Exception as exc:
+        error_msg = f"Error al consultar listas: {exc}"
+        errors.append(error_msg)
+        logger.error(f"[Ingesta {tipo}] ❌ {error_msg}")
+
+        # LOG FINAL CON ERROR
+        logger.error(f"[Ingesta {tipo}] ❌ Finalizada con error. Creados: 0, Actualizados: 0, Errores: 1")
+
+        if retornar_nuevos:
+            return created, updated, errors, nuevos_ids
+        return created, updated, errors
+
+    for item in listas:
+        tipodoc = item.get("tipodoc") or "DNI"
+        nrodoc = str(item.get("nrodoc") or "").strip()
+        if not nrodoc:
+            errors.append("Registro sin nrodoc")
+            continue
+        existing = Alumno.objects.filter(tipo_documento=tipodoc, dni=nrodoc).first()
+        if nrodoc not in cache_personal:
+            try:
+                cache_personal[nrodoc] = client.fetch_datospersonales(nrodoc)
+            except Exception as exc:
+                errors.append(f"{tipodoc} {nrodoc}: error datospersonales ({exc})")
+                cache_personal[nrodoc] = {}
+
+        defaults = _build_defaults(tipo, item, cache_personal.get(nrodoc, {}), existing)
+        try:
+            obj, is_created = Alumno.objects.update_or_create(
+                tipo_documento=tipodoc, dni=nrodoc, defaults=defaults
+            )
+            created += 1 if is_created else 0
+            updated += 0 if is_created else 1
+
+            # Si es nuevo y se solicitan IDs, agregarlo a la lista
+            if is_created and retornar_nuevos:
+                nuevos_ids.append(obj.id)
+
+            # Si es nuevo y se solicita envío de email, enviar
+            if is_created and enviar_email:
+                if obj.email_personal or obj.email_institucional:
+                    try:
+                        from .email_service import EmailService
+                        email_svc = EmailService()
+                        email_result = email_svc.send_welcome_email(obj)
+                        if not email_result:
+                            errors.append(f"{tipodoc} {nrodoc}: error enviando email de bienvenida")
+                    except Exception as email_exc:
+                        errors.append(f"{tipodoc} {nrodoc}: error enviando email ({email_exc})")
+                else:
+                    errors.append(f"{tipodoc} {nrodoc}: sin email, no se pudo enviar bienvenida")
+
+        except Exception as exc:
+            errors.append(f"{tipodoc} {nrodoc}: error al guardar ({exc})")
+
+    # LOG FINAL
+    if errors:
+        logger.warning(f"[Ingesta {tipo}] ⚠️ Finalizada con errores")
+        logger.warning(f"[Ingesta {tipo}] Resumen: Creados: {created}, Actualizados: {updated}, Errores: {len(errors)}")
+        logger.warning(f"[Ingesta {tipo}] Detalle de errores:")
+        for error in errors:
+            logger.warning(f"[Ingesta {tipo}]   - {error}")
+    else:
+        logger.info(f"[Ingesta {tipo}] ✅ Finalizada exitosamente")
+        logger.info(f"[Ingesta {tipo}] Resumen: Creados: {created}, Actualizados: {updated}, Errores: 0")
+
+    if retornar_nuevos:
+        return created, updated, errors, nuevos_ids
+    return created, updated, errors

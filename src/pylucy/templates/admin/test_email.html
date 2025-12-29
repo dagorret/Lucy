@@ -1,0 +1,283 @@
+<!--
+Nombre del Archivo: test_email.html
+
+Descripción:
+Template para prueba de envío de emails a través de Office 365 y Graph API.
+Permite validar la configuración de correo electrónico del sistema.
+
+Autor: Carlos Dagorret
+Fecha de Creación: 2025-12-29
+Última Modificación: 2025-12-29
+
+Licencia: MIT
+Copyright (c) 2025 Carlos Dagorret
+-->
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Probar Email - Office 365{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Inicio</a>
+    &rsaquo; Probar Email
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .email-container {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    .email-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    @media (max-width: 1200px) {
+        .email-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+{# Header #}
+<div style="background: linear-gradient(135deg, #0078d4 0%, #00bcf2 100%); padding: 25px; color: white; border-radius: 6px; margin-bottom: 20px;">
+    <h1 style="margin: 0 0 10px 0; font-size: 26px;">📧 Probar Envío de Email con Office 365</h1>
+    <p style="margin: 0; opacity: 0.9; font-size: 14px;">
+        Envía un email de prueba usando <strong>Microsoft Graph API</strong>. Si funciona, podrás configurar el sistema para usar Office 365.
+    </p>
+</div>
+
+{# Layout de dos columnas responsive #}
+<div class="email-grid">
+
+    {# Columna izquierda: Formulario #}
+    <div class="module" style="border-left: 4px solid #0078d4; border-radius: 6px; overflow: hidden;">
+        <div style="padding: 25px; background-color: #fff;">
+            <h2 style="margin: 0 0 20px 0; color: #0078d4; font-size: 20px;">📝 Formulario de Prueba</h2>
+
+            <form id="test-email-form">
+                {% csrf_token %}
+
+                <div style="margin-bottom: 20px;">
+                    <label for="email_from" style="display: block; font-weight: bold; margin-bottom: 8px; color: #333; font-size: 14px;">
+                        Remitente (From):
+                    </label>
+                    <input
+                        type="email"
+                        id="email_from"
+                        name="email_from"
+                        placeholder="lucy@eco.unrc.edu.ar"
+                        value="lucy@eco.unrc.edu.ar"
+                        required
+                        style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 4px; font-size: 14px; box-sizing: border-box;"
+                        onfocus="this.style.borderColor='#0078d4'"
+                        onblur="this.style.borderColor='#e0e0e0'"
+                    />
+                    <small style="color: #666; display: block; margin-top: 5px; font-size: 12px;">
+                        ⚠️ Debe ser una cuenta <strong>real</strong> de Office 365 (no puede ser no-reply)
+                    </small>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <label for="destinatario" style="display: block; font-weight: bold; margin-bottom: 8px; color: #333; font-size: 14px;">
+                        Destinatario (Para):
+                    </label>
+                    <input
+                        type="email"
+                        id="destinatario"
+                        name="destinatario"
+                        placeholder="ejemplo@dominio.com"
+                        required
+                        style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 4px; font-size: 14px; box-sizing: border-box;"
+                        onfocus="this.style.borderColor='#0078d4'"
+                        onblur="this.style.borderColor='#e0e0e0'"
+                    />
+                    <small style="color: #666; display: block; margin-top: 5px; font-size: 12px;">
+                        Email donde recibirás la prueba
+                    </small>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <label for="mensaje" style="display: block; font-weight: bold; margin-bottom: 8px; color: #333; font-size: 14px;">
+                        Mensaje personalizado (opcional):
+                    </label>
+                    <textarea
+                        id="mensaje"
+                        name="mensaje"
+                        rows="5"
+                        placeholder="Escribe aquí tu mensaje de prueba..."
+                        style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 4px; font-family: inherit; font-size: 14px; resize: vertical; box-sizing: border-box;"
+                        onfocus="this.style.borderColor='#0078d4'"
+                        onblur="this.style.borderColor='#e0e0e0'"
+                    ></textarea>
+                    <small style="color: #666; display: block; margin-top: 5px; font-size: 12px;">
+                        Si dejas vacío, se enviará un mensaje por defecto
+                    </small>
+                </div>
+
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <button
+                        type="submit"
+                        style="background: linear-gradient(135deg, #0078d4 0%, #00bcf2 100%); color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s;"
+                        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,120,212,0.3)'"
+                        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
+                    >
+                        📤 Enviar Email de Prueba
+                    </button>
+
+                    <a
+                        href="{% url 'admin:index' %}"
+                        style="padding: 12px 24px; border: 2px solid #ddd; border-radius: 4px; text-decoration: none; color: #666; font-weight: bold; font-size: 14px; transition: all 0.2s;"
+                        onmouseover="this.style.borderColor='#999'; this.style.color='#333'"
+                        onmouseout="this.style.borderColor='#ddd'; this.style.color='#666'"
+                    >
+                        ← Volver
+                    </a>
+                </div>
+
+                <div id="email-result" style="margin-top: 20px; display: none;"></div>
+            </form>
+        </div>
+
+        {# Info técnica compacta #}
+        <div style="padding: 15px 25px; background-color: #f9f9f9; border-top: 1px solid #e0e0e0;">
+            <h4 style="margin: 0 0 10px 0; color: #333; font-size: 14px;">💡 Información Técnica</h4>
+            <ul style="margin: 0; padding-left: 20px; color: #666; font-size: 12px; line-height: 1.6;">
+                <li><strong>Método:</strong> Microsoft Graph API</li>
+                <li><strong>Endpoint:</strong> <code>/v1.0/users/{userId}/sendMail</code></li>
+                <li><strong>Auth:</strong> OAuth2 (mismo token que Teams)</li>
+                <li><strong>Permiso:</strong> <code>Mail.Send</code></li>
+            </ul>
+        </div>
+    </div>
+
+    {# Columna derecha: Instrucciones de configuración #}
+    <div class="module" style="border-left: 4px solid #28a745; border-radius: 6px; overflow: hidden;">
+        <div style="padding: 25px; background-color: #fff;">
+            <h2 style="margin: 0 0 20px 0; color: #28a745; font-size: 20px;">🚀 Configurar en el Sistema</h2>
+
+            <p style="margin: 0 0 15px 0; color: #555; font-size: 13px;">
+                Si el email de prueba funciona, configura PyLucy para usar Office 365:
+            </p>
+
+            {# Configuración del sistema #}
+            <div style="background-color: #f0f8ff; border: 1px solid #0078d4; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="margin: 0 0 10px 0; color: #0066cc; font-size: 14px;">📝 Variables de Entorno (.env.prod)</h4>
+                <p style="margin: 0 0 10px 0; font-size: 12px; color: #555;">
+                    Agrega o actualiza en tu archivo de variables de entorno:
+                </p>
+                <pre style="background-color: #fff; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin: 0; border: 1px solid #ddd; white-space: pre-wrap; word-wrap: break-word;"><code># Email - Remitente por defecto
+# ⚠️ Debe ser una cuenta REAL de Office 365
+EMAIL_FROM=lucy@eco.unrc.edu.ar
+
+# Las credenciales de Azure AD ya configuradas:
+# TEAMS_TENANT=tu-tenant-id
+# TEAMS_CLIENT_ID=tu-client-id
+# TEAMS_CLIENT_SECRET=tu-client-secret
+
+# Graph API se usa automáticamente</code></pre>
+                <p style="margin: 10px 0 0 0; padding: 8px; background-color: rgba(255,193,7,0.1); border-left: 3px solid #ffc107; border-radius: 4px; font-size: 11px; color: #856404;">
+                    ⚠️ <strong>Importante:</strong> El email remitente debe ser una cuenta real de Office 365. No puedes usar direcciones como "no-reply@" porque deben existir para enviar vía Graph API.
+                </p>
+            </div>
+
+            {# Reiniciar servicios #}
+            <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="margin: 0 0 8px 0; color: #856404; font-size: 14px;">⚙️ Reiniciar Servicios</h4>
+                <pre style="background-color: #fff; padding: 10px; border-radius: 4px; font-size: 11px; margin: 0; border: 1px solid #ddd; overflow-x: auto;"><code>docker compose -f docker-compose.prod.yml restart web celery</code></pre>
+            </div>
+
+            {# Ventajas #}
+            <div style="background-color: #e8f5e9; border: 1px solid #4caf50; border-radius: 4px; padding: 15px;">
+                <h4 style="margin: 0 0 10px 0; color: #2e7d32; font-size: 14px;">✅ Ventajas de Graph API</h4>
+                <ul style="margin: 0; padding-left: 20px; color: #1b5e20; font-size: 12px; line-height: 1.6;">
+                    <li>Usa credenciales Azure AD existentes</li>
+                    <li>No necesita SMTP ni App Passwords</li>
+                    <li>OAuth2 más seguro que SMTP</li>
+                    <li>Hasta 10,000 emails/día por usuario</li>
+                    <li>Soporta HTML y adjuntos</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('test-email-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const form = e.target;
+    const button = form.querySelector('button[type="submit"]');
+    const resultDiv = document.getElementById('email-result');
+    const formData = new FormData(form);
+
+    // Deshabilitar botón y mostrar loading
+    button.disabled = true;
+    const originalText = button.innerHTML;
+    button.innerHTML = '⏳ Enviando...';
+    resultDiv.style.display = 'none';
+
+    try {
+        const response = await fetch('{% url "admin:test_email" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+            },
+            body: new URLSearchParams({
+                'email_from': formData.get('email_from'),
+                'destinatario': formData.get('destinatario'),
+                'mensaje': formData.get('mensaje') || ''
+            })
+        });
+
+        const data = await response.json();
+
+        // Mostrar resultado
+        resultDiv.style.display = 'block';
+        if (data.success) {
+            resultDiv.innerHTML = `
+                <div style="padding: 15px; background-color: #d4edda; border: 2px solid #c3e6cb; border-radius: 6px; color: #155724;">
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">✅ Email enviado exitosamente</div>
+                    <p style="margin: 0; font-size: 13px;">${data.message}</p>
+                    <p style="margin: 10px 0 0 0; padding: 10px; background-color: rgba(255,255,255,0.6); border-radius: 4px; font-size: 12px;">
+                        <strong>🎉 ¡Perfecto!</strong> Office 365 funciona. Configúralo en el sistema →
+                    </p>
+                </div>
+            `;
+        } else {
+            let errorHtml = `
+                <div style="padding: 15px; background-color: #f8d7da; border: 2px solid #f5c6cb; border-radius: 6px; color: #721c24;">
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">❌ Error al enviar</div>
+                    <p style="margin: 0; font-size: 13px;"><strong>Detalle:</strong> ${data.error}</p>
+            `;
+            if (data.hint) {
+                errorHtml += `<p style="margin: 10px 0 0 0; padding: 10px; background-color: rgba(255,255,255,0.5); border-radius: 4px; font-size: 12px;"><strong>💡 Sugerencia:</strong> ${data.hint}</p>`;
+            }
+            errorHtml += `</div>`;
+            resultDiv.innerHTML = errorHtml;
+        }
+
+        // Scroll al resultado
+        resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    } catch (error) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `
+            <div style="padding: 15px; background-color: #f8d7da; border: 2px solid #f5c6cb; border-radius: 6px; color: #721c24;">
+                <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">❌ Error de conexión</div>
+                <p style="margin: 0; font-size: 13px;">${error.message}</p>
+            </div>
+        `;
+        resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } finally {
+        // Re-habilitar botón
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+});
+</script>
+{% endblock %}

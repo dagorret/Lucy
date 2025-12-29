@@ -1,0 +1,140 @@
+"""
+Nombre del Módulo: models.py
+
+Descripción:
+Modelos de base de datos para la aplicación Cursos.
+Define modelos para Carreras y Cursos de Ingreso con sus relaciones.
+
+Autor: Carlos Dagorret
+Fecha de Creación: 2025-12-29
+Última Modificación: 2025-12-29
+
+Licencia: MIT
+Copyright (c) 2025 Carlos Dagorret
+
+Permisos:
+Se concede permiso, de forma gratuita, a cualquier persona que obtenga una copia
+de este software y la documentación asociada (el "Software"), para tratar
+en el Software sin restricciones, incluyendo, sin limitación, los derechos
+de usar, copiar, modificar, fusionar, publicar, distribuir, sublicenciar
+y/o vender copias del Software, y para permitir a las personas a las que
+se les proporciona el Software hacerlo, sujeto a las siguientes condiciones:
+
+El aviso de copyright anterior y este aviso de permiso se incluirán en todas
+las copias o partes sustanciales del Software.
+
+EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO, EXPRESA O
+IMPLÍCITA, INCLUYENDO PERO NO LIMITADO A LAS GARANTÍAS DE COMERCIABILIDAD,
+IDONEIDAD PARA UN PROPÓSITO PARTICULAR Y NO INFRACCIÓN. EN NINGÚN CASO LOS
+AUTORES O TITULARES DE LOS DERECHOS DE AUTOR SERÁN RESPONSABLES DE CUALQUIER
+RECLAMO, DAÑO U OTRA RESPONSABILIDAD, YA SEA EN UNA ACCIÓN DE CONTRATO,
+AGRAVIO O DE OTRO MODO, QUE SURJA DE, FUERA DE O EN CONEXIÓN CON EL SOFTWARE
+O EL USO U OTROS TRATOS EN EL SOFTWARE.
+"""
+from django.core.exceptions import ValidationError
+from django.db import models
+
+
+class Carrera(models.Model):
+    """
+    Modelo para definir las carreras de la facultad.
+    Mapea el ID de la UTI con el código interno y nombre completo.
+    """
+    id_uti = models.IntegerField(
+        unique=True,
+        help_text="ID de carrera desde API UTI/SIAL (ej: 2, 3, 4, 7, 8)"
+    )
+    codigo = models.CharField(
+        max_length=10,
+        unique=True,
+        help_text="Código interno de la carrera (ej: LE, CP, LA, TGA, TGE)"
+    )
+    nombre_completo = models.CharField(
+        max_length=255,
+        help_text="Nombre completo de la carrera"
+    )
+    activo = models.BooleanField(
+        default=True,
+        help_text="Si la carrera está activa para nuevas inscripciones"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Carrera"
+        verbose_name_plural = "Carreras"
+        ordering = ["nombre_completo"]
+
+    def __str__(self):
+        return f"{self.nombre_completo} ({self.codigo})"
+
+
+def _normalizar_lista(valor):
+    """
+    Acepta list/tuple de strings o string separada por comas.
+    Devuelve lista de valores en mayúsculas sin espacios.
+    """
+    if valor is None:
+        return []
+    if isinstance(valor, str):
+        partes = [p.strip().upper() for p in valor.split(",") if p.strip()]
+    elif isinstance(valor, (list, tuple)):
+        partes = []
+        for item in valor:
+            if item is None:
+                continue
+            partes.extend(str(item).strip().upper().split(","))
+        partes = [p for p in (s.strip() for s in partes) if p]
+    else:
+        raise ValidationError("Formato inválido. Usa lista o texto separado por comas.")
+    return partes
+
+
+def _normalizar_carreras(valor):
+    return _normalizar_lista(valor)
+
+
+def _normalizar_modalidades(valor):
+    return _normalizar_lista(valor)
+
+
+def _normalizar_comisiones(valor):
+    return _normalizar_lista(valor)
+
+
+class BaseCurso(models.Model):
+    nombre = models.CharField(max_length=150)
+    curso_moodle = models.CharField(max_length=150, help_text="Shortname del curso en Moodle")
+    carreras = models.JSONField(default=list, help_text="Lista de códigos de carrera (ej: CP, LE)")
+    modalidades = models.JSONField(default=list, help_text="Lista de modalidades (ej: PRES, DIST)")
+    comisiones = models.JSONField(default=list, help_text="Lista de comisiones (ej: 1, 2, 01, 02)")
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        abstract = True
+        ordering = ("nombre",)
+
+    def clean(self):
+        super().clean()
+        carreras = _normalizar_lista(self.carreras)
+        modalidades = _normalizar_lista(self.modalidades)
+        comisiones = _normalizar_lista(self.comisiones)
+        if not carreras:
+            raise ValidationError({"carreras": "Debe indicar al menos una carrera."})
+        if not modalidades:
+            raise ValidationError({"modalidades": "Debe indicar al menos una modalidad."})
+        self.carreras = carreras
+        self.modalidades = modalidades
+        self.comisiones = comisiones
+
+
+class CursoIngreso(BaseCurso):
+    """Curso de ingreso. Se diferencia por carrera + modalidad + comisión (opcional)."""
+
+    class Meta:
+        verbose_name = "Curso de ingreso"
+        verbose_name_plural = "Cursos de ingreso"
+
+    def __str__(self):
+        suffix = f" [{'/'.join(self.comisiones)}]" if self.comisiones else ""
+        return f"{self.nombre}{suffix} ({self.curso_moodle})"
