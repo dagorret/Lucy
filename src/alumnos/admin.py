@@ -32,6 +32,7 @@ O EL USO U OTROS TRATOS EN EL SOFTWARE.
 """
 from django.contrib import admin
 from django.contrib import messages
+from django.db import models as db_models
 from django.shortcuts import redirect
 from django.urls import path
 from django.utils import timezone
@@ -121,7 +122,7 @@ def encolar_o_ejecutar_tarea(alumno, tipo_tarea, task_func=None, task_args=None,
     return tarea
 
 
-@admin.register(Alumno)
+# AlumnoAdmin base (no registrar aquí, se registra AlumnoAdminWithFilters en PyLucyAdminSite)
 class AlumnoAdmin(admin.ModelAdmin):
     change_list_template = "admin/alumnos/alumno/change_list.html"
     list_display = (
@@ -2494,7 +2495,7 @@ class AlumnoAdmin(admin.ModelAdmin):
 
             try:
                 # Construir UPN y obtener usuario de Teams
-                prefix = settings.ACCOUNT_PREFIX
+                prefix = teams_svc.account_prefix
                 upn = f"{prefix}{alumno.dni}@{settings.TEAMS_DOMAIN}"
 
                 # Verificar que el usuario existe en Teams
@@ -2570,7 +2571,7 @@ class AlumnoAdmin(admin.ModelAdmin):
 
         for alumno in queryset:
             try:
-                prefix = settings.ACCOUNT_PREFIX
+                prefix = teams_svc.account_prefix
                 upn = f"{prefix}{alumno.dni}@{settings.TEAMS_DOMAIN}"
 
                 new_password = teams_svc.reset_password(upn)
@@ -2855,16 +2856,94 @@ class CarreraListFilter(admin.SimpleListFilter):
         return queryset
 
 
-# Re-registrar AlumnoAdmin con el filtro personalizado
-admin.site.unregister(Alumno)
+class TeamsStatusFilter(admin.SimpleListFilter):
+    """Filtro para estado de Teams (tiene email institucional)."""
+    title = 'Estado Teams'
+    parameter_name = 'teams_status'
 
-@admin.register(Alumno)
+    def lookups(self, request, model_admin):
+        return (
+            ('con_teams', 'Con Teams (tiene email institucional)'),
+            ('sin_teams', 'Sin Teams (sin email institucional)'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'con_teams':
+            return queryset.exclude(email_institucional__isnull=True).exclude(email_institucional='')
+        if self.value() == 'sin_teams':
+            return queryset.filter(email_institucional__isnull=True) | queryset.filter(email_institucional='')
+        return queryset
+
+
+class MoodleStatusFilter(admin.SimpleListFilter):
+    """Filtro para estado de Moodle (enrollado en cursos)."""
+    title = 'Estado Moodle'
+    parameter_name = 'moodle_status'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('con_moodle', 'Con Moodle (tiene cursos)'),
+            ('sin_moodle', 'Sin Moodle (sin cursos)'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'con_moodle':
+            # Alumnos con carreras_data que contenga al menos una carrera
+            return queryset.exclude(carreras_data__isnull=True).exclude(carreras_data=[])
+        if self.value() == 'sin_moodle':
+            # Alumnos sin carreras_data o con array vacío
+            return queryset.filter(carreras_data__isnull=True) | queryset.filter(carreras_data=[])
+        return queryset
+
+
+class EmailStatusFilter(admin.SimpleListFilter):
+    """Filtro para estado de Email (tiene email personal o institucional)."""
+    title = 'Estado Email'
+    parameter_name = 'email_status'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('con_email_personal', 'Con email personal'),
+            ('con_email_institucional', 'Con email institucional'),
+            ('con_cualquier_email', 'Con cualquier email'),
+            ('sin_email', 'Sin email'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'con_email_personal':
+            return queryset.exclude(email_personal__isnull=True).exclude(email_personal='')
+        if self.value() == 'con_email_institucional':
+            return queryset.exclude(email_institucional__isnull=True).exclude(email_institucional='')
+        if self.value() == 'con_cualquier_email':
+            # Tiene al menos uno de los dos
+            return queryset.filter(
+                db_models.Q(email_personal__isnull=False, email_personal__gt='') |
+                db_models.Q(email_institucional__isnull=False, email_institucional__gt='')
+            )
+        if self.value() == 'sin_email':
+            # No tiene ninguno de los dos
+            return queryset.filter(
+                db_models.Q(email_personal__isnull=True) | db_models.Q(email_personal='')
+            ).filter(
+                db_models.Q(email_institucional__isnull=True) | db_models.Q(email_institucional='')
+            )
+        return queryset
+
+
+# AlumnoAdmin con filtros personalizados (se registra en PyLucyAdminSite más abajo)
 class AlumnoAdminWithFilters(AlumnoAdmin):
     """AlumnoAdmin con filtros personalizados."""
-    list_filter = ("estado_actual", "modalidad_actual", CarreraListFilter, "cohorte")
+    list_filter = (
+        "estado_actual",
+        "modalidad_actual",
+        CarreraListFilter,
+        "cohorte",
+        TeamsStatusFilter,
+        MoodleStatusFilter,
+        EmailStatusFilter,
+    )
 
 
-@admin.register(Log)
 class LogAdmin(admin.ModelAdmin):
     """Admin para visualizar logs del sistema."""
 
@@ -3120,33 +3199,36 @@ class ConfiguracionAdmin(admin.ModelAdmin):
                 'preinscriptos_dia_inicio',
                 'preinscriptos_dia_fin',
                 'preinscriptos_frecuencia_segundos',
+                'preinscriptos_forzar_carga_completa',
                 'preinscriptos_enviar_email',
                 'preinscriptos_activar_teams',
                 'preinscriptos_activar_moodle',
             ),
-            'description': '✉️ Configuración de ingesta automática de preinscriptos. Los checkboxes controlan emails y activación automática en Teams/Moodle.'
+            'description': '✉️ Configuración de ingesta automática de preinscriptos. FORZAR CARGA COMPLETA: trae todos los registros desde dia_inicio (se desactiva automáticamente después de ejecutar). Los checkboxes controlan emails y activación automática en Teams/Moodle.'
         }),
         ('📥 Ingesta Automática - Aspirantes', {
             'fields': (
                 'aspirantes_dia_inicio',
                 'aspirantes_dia_fin',
                 'aspirantes_frecuencia_segundos',
+                'aspirantes_forzar_carga_completa',
                 'aspirantes_enviar_email',
                 'aspirantes_activar_teams',
                 'aspirantes_activar_moodle',
             ),
-            'description': '✉️ Configuración de ingesta automática de aspirantes. Los checkboxes controlan emails y activación automática en Teams/Moodle.'
+            'description': '✉️ Configuración de ingesta automática de aspirantes. FORZAR CARGA COMPLETA: trae todos los registros desde dia_inicio (se desactiva automáticamente después de ejecutar). Los checkboxes controlan emails y activación automática en Teams/Moodle.'
         }),
         ('📥 Ingesta Automática - Ingresantes', {
             'fields': (
                 'ingresantes_dia_inicio',
                 'ingresantes_dia_fin',
                 'ingresantes_frecuencia_segundos',
+                'ingresantes_forzar_carga_completa',
                 'ingresantes_enviar_email',
                 'ingresantes_activar_teams',
                 'ingresantes_activar_moodle',
             ),
-            'description': '✉️ Configuración de ingesta automática de ingresantes. Los checkboxes controlan emails y activación automática en Teams/Moodle.'
+            'description': '✉️ Configuración de ingesta automática de ingresantes. FORZAR CARGA COMPLETA: trae todos los registros desde dia_inicio (se desactiva automáticamente después de ejecutar). Los checkboxes controlan emails y activación automática en Teams/Moodle.'
         }),
         ('🔐 Credenciales Teams/Azure AD', {
             'fields': (
@@ -3179,15 +3261,16 @@ class ConfiguracionAdmin(admin.ModelAdmin):
             'description': 'Credenciales de Moodle. Auth method: oauth2 (Microsoft) o manual. Courses config: JSON con cursos por estado de alumno.',
             'classes': ('collapse',)
         }),
-        ('📧 Configuración de Email SMTP', {
+        ('📧 Configuración de Email', {
             'fields': (
+                'email_usar_microsoft_graph',
                 'email_from',
                 'email_host',
                 'email_port',
                 'email_use_tls',
                 'deshabilitar_fallback_email_personal',
             ),
-            'description': 'Configuración SMTP para envío de emails. Si están vacíos, se usan las variables de entorno (DEFAULT_FROM_EMAIL, EMAIL_HOST, etc.). ⚠️ FALLBACK: Si está deshabilitado, el sistema NO usará email_personal cuando falte email_institucional.',
+            'description': 'Configuración de envío de emails. MICROSOFT GRAPH: Si se activa, usa Microsoft Graph API en lugar de SMTP (requiere credenciales Teams configuradas, solo necesita email_from). SMTP: Si Graph está desactivado, usa configuración SMTP tradicional. ⚠️ FALLBACK: Si está deshabilitado, el sistema NO usará email_personal cuando falte email_institucional.',
             'classes': ('collapse',)
         }),
         ('✉️ Plantillas de Emails', {
@@ -3204,6 +3287,12 @@ class ConfiguracionAdmin(admin.ModelAdmin):
             'description': 'Plantillas HTML para emails. Pegar HTML completo en cada campo. Variables disponibles: {nombre}, {apellido}, {dni}, {email}, {upn}, {password}, {moodle_url}, {cursos_html}. IMPORTANTE: En CSS usar {{{{ y }}}} para escapar llaves.',
             'classes': ('collapse',)
         }),
+        ('🔧 Acciones', {
+            'fields': (
+                'boton_resetear_checkpoints',
+            ),
+            'description': 'Herramientas de administración de checkpoints e ingesta.'
+        }),
         ('ℹ️ Metadatos', {
             'fields': (
                 'actualizado_en',
@@ -3213,7 +3302,32 @@ class ConfiguracionAdmin(admin.ModelAdmin):
         }),
     )
 
-    readonly_fields = ('actualizado_en', 'actualizado_por')
+    readonly_fields = ('actualizado_en', 'actualizado_por', 'boton_resetear_checkpoints')
+
+    actions = ['resetear_checkpoints_ingesta']
+
+    def boton_resetear_checkpoints(self, obj):
+        """Botón para resetear checkpoints desde el formulario."""
+        if obj and obj.pk:
+            from django.urls import reverse
+            url = reverse('admin:alumnos_configuracion_resetear_checkpoints', args=[obj.pk])
+            return format_html(
+                '<div style="background: #f8f9fa; padding: 15px; border: 1px solid #dee2e6; border-radius: 5px; margin-top: 10px;">'
+                '<p style="margin: 0 0 10px 0;"><strong>🔄 Resetear Checkpoints de Ingesta</strong></p>'
+                '<p style="margin: 0 0 10px 0; font-size: 13px; color: #666;">'
+                'Resetea los timestamps de última ingesta (preinscriptos, aspirantes, ingresantes) para forzar carga completa en la próxima ejecución automática.<br>'
+                '<strong>Nota:</strong> Esto hará que la próxima tarea periódica traiga TODOS los registros desde dia_inicio hasta ahora.'
+                '</p>'
+                '<a href="{}" '
+                'onclick="return confirm(\'¿Estás seguro de resetear los checkpoints? La próxima ingesta traerá TODOS los registros desde dia_inicio.\');" '
+                'style="display: inline-block; background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px;">'
+                '🔄 Resetear Checkpoints Ahora'
+                '</a>'
+                '</div>',
+                url
+            )
+        return "Guarda primero la configuración"
+    boton_resetear_checkpoints.short_description = "🔧 Resetear Checkpoints"
 
     def has_add_permission(self, request):
         """Solo puede haber una configuración (Singleton)."""
@@ -3227,6 +3341,50 @@ class ConfiguracionAdmin(admin.ModelAdmin):
         """Guarda quién modificó la configuración."""
         obj.actualizado_por = request.user.username
         super().save_model(request, obj, form, change)
+
+    @admin.action(description="🔄 Resetear checkpoints de ingesta (fuerza carga completa en próxima ejecución)")
+    def resetear_checkpoints_ingesta(self, request, queryset):
+        """Resetea los timestamps de última ingesta para forzar carga completa."""
+        for config in queryset:
+            config.ultima_ingesta_preinscriptos = None
+            config.ultima_ingesta_aspirantes = None
+            config.ultima_ingesta_ingresantes = None
+            config.save(update_fields=[
+                'ultima_ingesta_preinscriptos',
+                'ultima_ingesta_aspirantes',
+                'ultima_ingesta_ingresantes'
+            ])
+
+        self.message_user(
+            request,
+            "Checkpoints reseteados. La próxima ingesta automática traerá todos los registros desde dia_inicio.",
+            messages.SUCCESS
+        )
+
+    def resetear_checkpoints_view(self, request, object_id):
+        """Vista para resetear checkpoints desde el formulario."""
+        from django.shortcuts import get_object_or_404
+        from django.http import HttpResponseRedirect
+
+        config = get_object_or_404(Configuracion, pk=object_id)
+
+        # Resetear checkpoints (GET o POST, ya confirmado por JavaScript)
+        config.ultima_ingesta_preinscriptos = None
+        config.ultima_ingesta_aspirantes = None
+        config.ultima_ingesta_ingresantes = None
+        config.save(update_fields=[
+            'ultima_ingesta_preinscriptos',
+            'ultima_ingesta_aspirantes',
+            'ultima_ingesta_ingresantes'
+        ])
+
+        self.message_user(
+            request,
+            "✅ Checkpoints reseteados exitosamente. La próxima ingesta automática traerá todos los registros desde dia_inicio.",
+            messages.SUCCESS
+        )
+
+        return HttpResponseRedirect(f'../')
 
     def get_urls(self):
         """Agregar URLs personalizadas para exportar/importar."""
@@ -3242,6 +3400,11 @@ class ConfiguracionAdmin(admin.ModelAdmin):
                 'importar-json/',
                 self.admin_site.admin_view(self.importar_json_view),
                 name='alumnos_configuracion_importar_json',
+            ),
+            path(
+                '<path:object_id>/resetear-checkpoints/',
+                self.admin_site.admin_view(self.resetear_checkpoints_view),
+                name='alumnos_configuracion_resetear_checkpoints',
             ),
         ]
         return custom_urls + urls
@@ -3615,7 +3778,7 @@ Sistema PyLucy"""
 admin_site = PyLucyAdminSite(name='admin')
 
 # Re-registrar todos los modelos en el nuevo admin site
-admin_site.register(Alumno, AlumnoAdmin)
+admin_site.register(Alumno, AlumnoAdminWithFilters)
 admin_site.register(Log, LogAdmin)
 admin_site.register(Configuracion, ConfiguracionAdmin)
 admin_site.register(Tarea, TareaAdmin)
@@ -3625,6 +3788,12 @@ from cursos.models import CursoIngreso, Carrera
 from cursos.admin import CursoIngresoAdmin, CarreraAdmin
 admin_site.register(CursoIngreso, CursoIngresoAdmin)
 admin_site.register(Carrera, CarreraAdmin)
+
+# Registrar modelos de autenticación de Django (Users y Groups)
+from django.contrib.auth.models import User, Group
+from django.contrib.auth.admin import UserAdmin, GroupAdmin
+admin_site.register(User, UserAdmin)
+admin_site.register(Group, GroupAdmin)
 
 
 # =============================================================================
